@@ -1,0 +1,16 @@
+{
+  "name": "weatherstation",
+  "version": "1.0.0",
+  "description": "Server application (API) for school project \"Weerstation\", that communicates with the STM32 and interacts with a database.",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
