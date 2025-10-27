@@ -1,43 +1,45 @@
-#include <zephyr/kernel.h>
+#include "sensor.h"
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/sys/printk.h>
-#include "sensor.h"
 
-#define SENSOR_INTERVAL_MS 2000
+static const struct device* g_dev = NULL;  
 
-void sensor_thread(void)
+void sensor_startup(void)
 {
-    const struct device *dev = DEVICE_DT_GET_ANY(bosch_bme280);
+    g_dev = DEVICE_DT_GET_ANY(bosch_bme280);
 
-    if (dev == NULL) {
-        printk("Error: No BME280 device found in DeviceTree\n");
+    if (g_dev == NULL || !device_is_ready(g_dev)) {
+        printk("Error: BME280 device not ready\n");
         return;
     }
 
-    if (!device_is_ready(dev)) {
-        printk("Error: BME280 device '%s' not ready\n", dev->name);
+    printk("BME280 ready.\n");
+}
+
+void get_sensor_values(struct sensor_value* temp,
+    struct sensor_value* hum,
+    struct sensor_value* pres)
+{
+    if (g_dev == NULL) {
+        printk("Error: Sensor device not initialized\n");
         return;
     }
 
-    printk("BME280 device '%s' ready. Starting sensor loop...\n", dev->name);
+    struct sensor_value t, h, p;
 
-    struct sensor_value temp, hum, pres;
+    if (sensor_sample_fetch(g_dev) == 0 &&
+        sensor_channel_get(g_dev, SENSOR_CHAN_AMBIENT_TEMP, &t) == 0 &&
+        sensor_channel_get(g_dev, SENSOR_CHAN_HUMIDITY, &h) == 0 &&
+        sensor_channel_get(g_dev, SENSOR_CHAN_PRESS, &p) == 0) {
 
-    while (1) {
-        if (sensor_sample_fetch(dev) < 0 ||
-            sensor_channel_get(dev, SENSOR_CHAN_AMBIENT_TEMP, &temp) < 0 ||
-            sensor_channel_get(dev, SENSOR_CHAN_HUMIDITY, &hum) < 0 ||
-            sensor_channel_get(dev, SENSOR_CHAN_PRESS, &pres) < 0) {
+        if (temp) *temp = t;
+        if (hum)  *hum = h;
+        if (pres) *pres = p;
 
-            printk("Failed to read sensor\n");
-        } else {
-            printk("Temp: %d.%06d C, Hum: %d.%06d %%, Press: %d.%06d Pa\n",
-                   temp.val1, temp.val2,
-                   hum.val1, hum.val2,
-                   pres.val1, pres.val2);
-        }
-        k_msleep(SENSOR_INTERVAL_MS);
+    }
+    else {
+        printk("Sensor read failed\n");
     }
 }
