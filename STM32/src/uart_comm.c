@@ -1,3 +1,7 @@
+/**
+ * @file uart_comm.c
+ * @brief Handles UART communication and WiFi data transmission for ESP8266.
+ */
 #include "uart_comm.h"
 #include <zephyr/device.h>
 #include <zephyr/drivers/uart.h>
@@ -12,7 +16,7 @@
 static const struct device *uart_dev = DEVICE_DT_GET(UART_NODE_ESP);
 static bool wifi_connected = false;
 
-/* --- Basis AT-command functie --- */
+/* --- Helper: Send basic AT command --- */
 static void send_at_command(const char *cmd)
 {
     if (!device_is_ready(uart_dev)) {
@@ -42,7 +46,7 @@ void debug_print(const char *msg)
     uart_poll_out(uart_dev, '\n');
 }
 
-/* --- Lees volledige ESP-respons --- */
+/* --- Read ESP response until "OK" or timeout --- */
 bool uart_read_response_for_ok(char *buf, size_t buf_size, int timeout_ms)
 {
     int idx = 0;
@@ -52,7 +56,7 @@ bool uart_read_response_for_ok(char *buf, size_t buf_size, int timeout_ms)
     while (waited < timeout_ms && idx < (int)(buf_size - 1)) {
         if (uart_poll_in(uart_dev, &c) == 0) {
             buf[idx++] = c;
-            waited = 0; // reset timeout bij ontvangen byte
+            waited = 0; // reset timeout on byte received
         } else {
             k_msleep(10);
             waited += 10;
@@ -68,7 +72,7 @@ bool uart_read_response_for_ok(char *buf, size_t buf_size, int timeout_ms)
         debug_print("ESP antwoord:");
         debug_print(buf);
 
-        // check of antwoord "OK" bevat
+        // check if answer has "OK" 
         if (strstr(buf, "OK") != NULL) {
             return true;
         }
@@ -76,7 +80,7 @@ bool uart_read_response_for_ok(char *buf, size_t buf_size, int timeout_ms)
     }
 }
 
-/* --- Verbind ESP met WiFi met retry --- */
+/* --- Connect ESP8266 to WiFi --- */
 void esp_connect_wifi(void)
 {
     if (wifi_connected) {
@@ -87,7 +91,7 @@ void esp_connect_wifi(void)
     debug_print("Reset ESP en verbinden met WiFi...");
 
     send_at_command("AT+RST");
-    k_msleep(5000); // wacht op reset
+    k_msleep(5000); // Wait for reset
     send_at_command("AT");
     k_msleep(500);
 
@@ -104,7 +108,7 @@ void esp_connect_wifi(void)
         attempts++;
         send_at_command(join_cmd);
 
-        // lees maximaal 10 seconden op antwoord
+        // Read for up to 10 seconds for response
         connected = uart_read_response_for_ok(response, sizeof(response), 10000);
         if (!connected) {
             debug_print("WiFi verbinding mislukt, opnieuw proberen...");
@@ -120,7 +124,7 @@ void esp_connect_wifi(void)
     }
 }
 
-/* --- Controleer WiFi status --- */
+/* --- Check WiFi status --- */
 void check_wifi_status(void)
 {
     debug_print("ESP8266 status check verzonden.");
@@ -129,7 +133,8 @@ void check_wifi_status(void)
     uart_read_response_for_ok(buf, sizeof(buf), 3000);
 }
 
-/* --- Verzend sensorwaarden naar server --- */
+
+/* --- Send sensor values to server --- */
 void uart_send_values(const struct sensor_value *temp,
                       const struct sensor_value *hum,
                       const struct sensor_value *pres)

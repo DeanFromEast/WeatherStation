@@ -1,3 +1,11 @@
+/**
+ * @file main.c
+ * @brief Main application entry for the weather station.
+ *
+ * Initializes sensors, connects to WiFi via ESP8266, and
+ * periodically sends measurements to an HTTP server.
+ */
+
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 #include "sensor.h"
@@ -21,10 +29,10 @@ void main(void)
         printk("Main(): T:%d.%06d H:%d.%06d P:%d.%06d\n",
                t.val1, t.val2, h.val1, h.val2, p.val1, p.val2);
 
-        // Verbind met iPhone hotspot
+        // Connect to iPhone hotspot
     esp_connect_wifi("Iphone van Rik", "12345678");
 
-    // Stuur GET-request
+    // Send GET-request
     esp_send_get("192.168.2.55", 3000, "/data?temp=20&hum=70&pres=999");
     }
 }

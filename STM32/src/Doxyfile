@@ -1,0 +1,26 @@
+# Project settings
+PROJECT_NAME           = "Weather Station"
+PROJECT_BRIEF          = "Zephyr-based weather station with ESP8266 and BME280"
+OUTPUT_DIRECTORY       = docs
+
+# Input directories
+INPUT                  = src include .
+FILE_PATTERNS          = *.c *.h
+
+# Recursively search subdirectories
+RECURSIVE              = YES
+
+# Generate HTML output
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+
+# (Optional) Also generate LaTeX/PDF
+GENERATE_LATEX         = NO
+
+# Enable call/caller/class diagrams
+HAVE_DOT               = YES
+CALL_GRAPH             = YES
+CALLER_GRAPH           = YES
+CLASS_DIAGRAMS         = YES
+DOT_IMAGE_FORMAT       = svg
+DOT_GRAPH_MAX_NODES    = 100

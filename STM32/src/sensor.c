@@ -1,3 +1,7 @@
+/**
+ * @file sensor.c
+ * @brief Implementation for BME280 temperature, humidity and pressure sensor.
+ */
 #include "sensor.h"
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
@@ -5,6 +9,7 @@
 #include <zephyr/sys/printk.h>
 
 static const struct device* g_dev = NULL;  
+
 
 void sensor_startup(void)
 {
@@ -17,6 +22,7 @@ void sensor_startup(void)
 
     printk("BME280 ready.\n");
 }
+
 
 void get_sensor_values(struct sensor_value* temp,
     struct sensor_value* hum,
