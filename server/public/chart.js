@@ -1,14 +1,51 @@
+/**
+ * @file chart.js
+ * @description Client-side JavaScript for weather station data visualization.
+ * Handles chart creation, data fetching, statistics calculation, and real-time updates.
+ */
+
+/**
+ * @type {Object.<string, Chart>}
+ * @description Store for Chart.js instances indexed by chart ID
+ */
 let charts = {};
+
+/**
+ * @type {string}
+ * @description Current time period filter ('hour', 'day', or 'all')
+ * @default 'all'
+ */
 let currentPeriod = 'all';
 
+/**
+ * @function calculateStats
+ * @description Calculates minimum, maximum, and average values from a data array.
+ * @param {Array<number>} data - Array of numerical values
+ * @returns {Object} Statistics object
+ * @returns {number} returns.min - Minimum value in the dataset
+ * @returns {number} returns.max - Maximum value in the dataset
+ * @returns {number} returns.avg - Average value of the dataset
+ * @example
+ * const stats = calculateStats([20, 22, 24, 21]);
+ * // Returns: { min: 20, max: 24, avg: 21.75 }
+ */
 function calculateStats(data) {
   if (data.length === 0) return { min: 0, max: 0, avg: 0 };
   const min = Math.min(...data);
   const max = Math.max(...data);
-  const avg = data.reduce((a, b) => a + b, 0) / data.length; 
+  const avg = data.reduce((a, b) => a + b, 0) / data.length;
   return { min, max, avg };
 }
 
+/**
+ * @async
+ * @function loadData
+ * @description Fetches sensor data from the server and updates all charts and statistics.
+ * Retrieves data based on the current time period filter, calculates statistics,
+ * updates DOM elements with current values and stats, and refreshes all charts.
+ * @returns {Promise<void>}
+ * @throws {Error} If fetch request fails or data processing encounters an error
+ */
 async function loadData() {
   try {
     const response = await fetch(`/fetch?period=${currentPeriod}`);
@@ -19,9 +56,24 @@ async function loadData() {
       return;
     }
 
+    /**
+     * @type {Array<string>} labels - Formatted timestamp labels for chart x-axis
+     */
     const labels = json.labels;
+
+    /**
+     * @type {Array<number>} temperatures - Temperature values in degrees Celsius
+     */
     const temperatures = json.values.map(v => v.temperature);
+
+    /**
+     * @type {Array<number>} humidities - Humidity values in percentage
+     */
     const humidities = json.values.map(v => v.humidity);
+
+    /**
+     * @type {Array<number>} pressures - Pressure values in hPa
+     */
     const pressures = json.values.map(v => v.pressure);
 
     // Update last update time
@@ -73,14 +125,32 @@ async function loadData() {
   }
 }
 
+/**
+ * @function createOrUpdateChart
+ * @description Creates a new Chart.js line chart or updates an existing one with new data.
+ * If a chart with the given ID already exists, it updates the data and refreshes the chart.
+ * Otherwise, it creates a new chart with the specified configuration.
+ * @param {string} id - Canvas element ID where the chart should be rendered
+ * @param {Array<string>} labels - Array of x-axis labels (timestamps)
+ * @param {Array<number>} data - Array of y-axis data points
+ * @param {string} label - Dataset label displayed in the legend
+ * @param {string} borderColor - CSS color string for the line border
+ * @param {string} backgroundColor - CSS color string for the area fill
+ * @returns {void}
+ * @example
+ * createOrUpdateChart('temp', ['12:00', '12:05'], [22.5, 23.1], 
+ *   'Temperatuur (°C)', 'rgb(220, 53, 69)', 'rgba(220, 53, 69, 0.1)');
+ */
 function createOrUpdateChart(id, labels, data, label, borderColor, backgroundColor) {
   const ctx = document.getElementById(id);
 
   if (charts[id]) {
+    // Update existing chart
     charts[id].data.labels = labels;
     charts[id].data.datasets[0].data = data;
     charts[id].update();
   } else {
+    // Create new chart
     charts[id] = new Chart(ctx, {
       type: "line",
       data: {
@@ -153,7 +223,12 @@ function createOrUpdateChart(id, labels, data, label, borderColor, backgroundCol
   }
 }
 
-// Time filter buttons
+/**
+ * @event click
+ * @description Time filter button click event handler.
+ * Updates the active filter button styling and reloads data for the selected time period.
+ * @listens .time-filter button#click
+ */
 document.querySelectorAll('.time-filter button').forEach(button => {
   button.addEventListener('click', (e) => {
     document.querySelectorAll('.time-filter button').forEach(btn =>
@@ -165,7 +240,17 @@ document.querySelectorAll('.time-filter button').forEach(button => {
   });
 });
 
+/**
+ * @event load
+ * @description Window load event handler that triggers initial data load.
+ * @listens window#load
+ */
 window.addEventListener("load", loadData);
 
+/**
+ * @const {number} AUTO_REFRESH_INTERVAL
+ * @description Auto-refresh interval in milliseconds (10 seconds)
+ * @default 10000
+ */
 // Auto-refresh every 10 seconds
 setInterval(loadData, 10000);
