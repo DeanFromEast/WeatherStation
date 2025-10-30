@@ -4,13 +4,104 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Chart.js voorbeeld</title>
+  <title>Weerstation Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
-  <h1>Temperatuurmetingen</h1>
-  <canvas id="myChart" width="400" height="200"></canvas>
+  <div class="container">
+    <header>
+      <h1>Weerstation Dashboard</h1>
+      <div class="header-info">
+        <span>Real-time sensor metingen</span>
+        <span class="last-update" id="last-update">Laatste update: --</span>
+      </div>
+    </header>
+
+    <div class="controls">
+      <div class="time-filter">
+        <button class="active" data-period="all">Alle tijd</button>
+        <button data-period="day">Laatste 24 uur</button>
+        <button data-period="hour">Laatste uur</button>
+      </div>
+      <button class="refresh-btn" onclick="loadData()">↻ Ververs data</button>
+    </div>
+
+    <div id="loading" class="loading">Data laden...</div>
+
+    <div id="content" style="display: none;">
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-label">Temperatuur</div>
+          <div>
+            <span class="stat-value" id="temp-current">--</span>
+            <span class="stat-unit">°C</span>
+          </div>
+          <div class="stat-meta">
+            <span>Min: <strong id="temp-min">--</strong></span>
+            <span>Max: <strong id="temp-max">--</strong></span>
+            <span>Gem: <strong id="temp-avg">--</strong></span>
+          </div>
+        </div>
+
+        <div class="stat-box">
+          <div class="stat-label">Luchtvochtigheid</div>
+          <div>
+            <span class="stat-value" id="hum-current">--</span>
+            <span class="stat-unit">%</span>
+          </div>
+          <div class="stat-meta">
+            <span>Min: <strong id="hum-min">--</strong></span>
+            <span>Max: <strong id="hum-max">--</strong></span>
+            <span>Gem: <strong id="hum-avg">--</strong></span>
+          </div>
+        </div>
+
+        <div class="stat-box">
+          <div class="stat-label">Luchtdruk</div>
+          <div>
+            <span class="stat-value" id="pres-current">--</span>
+            <span class="stat-unit">hPa</span>
+          </div>
+          <div class="stat-meta">
+            <span>Min: <strong id="pres-min">--</strong></span>
+            <span>Max: <strong id="pres-max">--</strong></span>
+            <span>Gem: <strong id="pres-avg">--</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="charts-container">
+        <div class="chart-box">
+          <div class="chart-header">
+            <span class="chart-title">Temperatuur (°C)</span>
+            <span class="chart-info" id="temp-range">--</span>
+          </div>
+          <canvas id="temp"></canvas>
+          <div class="data-count" id="temp-count">-- metingen</div>
+        </div>
+
+        <div class="chart-box">
+          <div class="chart-header">
+            <span class="chart-title">Luchtvochtigheid (%)</span>
+            <span class="chart-info" id="hum-range">--</span>
+          </div>
+          <canvas id="hum"></canvas>
+          <div class="data-count" id="hum-count">-- metingen</div>
+        </div>
+
+        <div class="chart-box">
+          <div class="chart-header">
+            <span class="chart-title">Luchtdruk (hPa)</span>
+            <span class="chart-info" id="pres-range">--</span>
+          </div>
+          <canvas id="pres"></canvas>
+          <div class="data-count" id="pres-count">-- metingen</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="chart.js"></script>
 </body>
