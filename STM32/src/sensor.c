@@ -1,51 +1,45 @@
 /**
  * @file sensor.c
- * @brief Implementation for BME280 temperature, humidity and pressure sensor.
+ * @brief Sensor interface implementation for the BME280 environmental sensor.
+ *
+ * This module handles sensor reading and data retrieval for temperature,
+ * humidity, and pressure using the Zephyr sensor API.
  */
-#include "sensor.h"
+
+#include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/sys/printk.h>
+#include "sensor.h"
 
-static const struct device* g_dev = NULL;  
+/**
+ * @brief Read temperature, humidity, and pressure values from the BME280 sensor.
+ *
+ * @param[out] temp Pointer to store the temperature reading.
+ * @param[out] hum  Pointer to store the humidity reading.
+ * @param[out] pres Pointer to store the pressure reading.
+ *
+ * @note This function blocks until all sensor channels have been fetched.
+ * It assumes a BME280 sensor is present and ready.
+ */
 
-
-void sensor_startup(void)
+void sensor_thread(struct sensor_value *temp,
+                   struct sensor_value *hum,
+                   struct sensor_value *pres)
 {
-    g_dev = DEVICE_DT_GET_ANY(bosch_bme280);
+    const struct device *dev = DEVICE_DT_GET_ANY(bosch_bme280);
 
-    if (g_dev == NULL || !device_is_ready(g_dev)) {
+    if (!dev || !device_is_ready(dev)) {
         printk("Error: BME280 device not ready\n");
         return;
     }
 
-    printk("BME280 ready.\n");
-}
-
-
-void get_sensor_values(struct sensor_value* temp,
-    struct sensor_value* hum,
-    struct sensor_value* pres)
-{
-    if (g_dev == NULL) {
-        printk("Error: Sensor device not initialized\n");
+    if (sensor_sample_fetch(dev) < 0 ||
+        sensor_channel_get(dev, SENSOR_CHAN_AMBIENT_TEMP, temp) < 0 ||
+        sensor_channel_get(dev, SENSOR_CHAN_HUMIDITY, hum) < 0 ||
+        sensor_channel_get(dev, SENSOR_CHAN_PRESS, pres) < 0) {
+        printk("Failed to read sensor\n");
         return;
-    }
-
-    struct sensor_value t, h, p;
-
-    if (sensor_sample_fetch(g_dev) == 0 &&
-        sensor_channel_get(g_dev, SENSOR_CHAN_AMBIENT_TEMP, &t) == 0 &&
-        sensor_channel_get(g_dev, SENSOR_CHAN_HUMIDITY, &h) == 0 &&
-        sensor_channel_get(g_dev, SENSOR_CHAN_PRESS, &p) == 0) {
-
-        if (temp) *temp = t;
-        if (hum)  *hum = h;
-        if (pres) *pres = p;
-
-    }
-    else {
-        printk("Sensor read failed\n");
     }
 }

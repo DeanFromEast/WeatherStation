@@ -8,14 +8,13 @@
     };
 };
 
+
 / {
     chosen {
-        zephyr,console = &usart1;
-        zephyr,shell-uart = &usart1;
+        zephyr,console = &usart2;  // Console op USART2 (ST-Link)
+        zephyr,shell-uart = &usart2;
     };
 };
-
-/* Activeer USART2 voor ESP8266 communicatie */
 
 &usart1 {
     status = "okay";
@@ -30,3 +29,4 @@
     pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
     pinctrl-names = "default";
 };
+

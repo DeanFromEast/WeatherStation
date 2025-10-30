@@ -1,31 +1,52 @@
 /**
  * @file uart_comm.h
- * @brief UART communication interface for ESP8266 AT firmware.
- *
- * Provides functions for WiFi management and sending sensor data to a server
- * through the ESP8266 using AT commands.
+ * @brief UART communication and WiFi control interface for ESP8266.
  */
+#ifndef UART_COMM_H
+#define UART_COMM_H
 
-#pragma once
-
-#include <zephyr/drivers/sensor.h>
-
- /**
-  * @brief Send the latest sensor values via UART to the ESP8266.
-  *
-  * Builds and sends an HTTP GET request using the ESP8266 AT command set.
-  *
-  * @param temp Pointer to temperature value
-  * @param hum Pointer to humidity value
-  * @param pres Pointer to pressure value
-  */
-void uart_send_values(const struct sensor_value *temp,
-                      const struct sensor_value *hum,
-                      const struct sensor_value *pres);
+#include <zephyr/kernel.h>
 
 /**
- * @brief Check the current WiFi connection status.
+ * @brief Initialiseer UART communicatie met ESP8266
+ * @return 1 bij succes, 0 bij fout
  */
-void check_wifi_status(void);
+int uart_comm_init(void);
 
-                      
+/**
+ * @brief Stuur een AT commando naar ESP8266
+ * @param cmd Het AT commando (zonder \r\n, wordt automatisch toegevoegd)
+ * @return 0 bij succes, negatieve waarde bij fout
+ */
+int uart_send_at_command(const char *cmd);
+
+/**
+ * @brief Verbind met WiFi netwerk
+ * @param ssid WiFi netwerk naam
+ * @param password WiFi wachtwoord
+ * @return 1 bij succes, 0 bij fout
+ */
+int wifi_connect(const char *ssid, const char *password);
+
+/**
+ * @brief Check of ESP8266 verbonden is met WiFi
+ * @return 1 als verbonden, 0 als niet verbonden, negatief bij fout
+ */
+int wifi_is_connected(void);
+
+/**
+ * @brief Stuur HTTP GET request met sensor data
+ * @param host Server IP adres 
+ * @param port Server poort
+ * @param temp Temperatuur waarde
+ * @param hum Vochtigheid waarde  
+ * @param pres Druk waarde
+ * @return 0 bij succes, negatieve waarde bij fout
+ */
+int http_send_sensor_data(const char *host, 
+                          int port,
+                          float temp, 
+                          float hum, 
+                          float pres);
+
+#endif // UART_COMM_H

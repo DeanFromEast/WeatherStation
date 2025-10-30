@@ -1,178 +1,250 @@
 /**
  * @file uart_comm.c
- * @brief Handles UART communication and WiFi data transmission for ESP8266.
+ * @brief UART communication and WiFi interface using ESP8266.
+ *
+ * This module implements UART communication with the ESP8266 WiFi module,
+ * including sending AT commands, establishing WiFi connections, and
+ * transmitting sensor data via HTTP requests.
  */
 #include "uart_comm.h"
+#include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/uart.h>
-#include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
-#include <stdio.h>
 #include <string.h>
-#include <stdarg.h>
 
-#define UART_NODE_ESP DT_NODELABEL(usart2)
+// UART1 device (PA9/PA10 - verbonden met ESP8266)
+static const struct device *uart_esp;
 
-static const struct device *uart_dev = DEVICE_DT_GET(UART_NODE_ESP);
-static bool wifi_connected = false;
+// Buffer voor ontvangen data
+#define RX_BUFFER_SIZE 512
+static char rx_buffer[RX_BUFFER_SIZE];
+static volatile size_t rx_index = 0;
+static K_SEM_DEFINE(rx_sem, 0, 1);
 
-/* --- Helper: Send basic AT command --- */
-static void send_at_command(const char *cmd)
+/**
+ * @brief UART interrupt service routine for ESP8266 communication.
+ *
+ * Handles incoming UART data, stores it in the receive buffer,
+ * and releases a semaphore when a newline character is received.
+ *
+ * @param dev Pointer to UART device.
+ * @param user_data Unused.
+ */
+static void uart_isr(const struct device *dev, void *user_data)
 {
-    if (!device_is_ready(uart_dev)) {
-        printk("ESP UART not ready\n");
-        return;
-    }
-
-    for (size_t i = 0; i < strlen(cmd); i++) {
-        uart_poll_out(uart_dev, cmd[i]);
-    }
-    uart_poll_out(uart_dev, '\r');
-    uart_poll_out(uart_dev, '\n');
-    k_msleep(300);
-}
-
-/* --- Debug print via UART --- */
-void debug_print(const char *msg)
-{
-    if (!device_is_ready(uart_dev)) {
-        printk("UART not ready\n");
-        return;
-    }
-
-    for (size_t i = 0; i < strlen(msg); i++) {
-        uart_poll_out(uart_dev, msg[i]);
-    }
-    uart_poll_out(uart_dev, '\n');
-}
-
-/* --- Read ESP response until "OK" or timeout --- */
-bool uart_read_response_for_ok(char *buf, size_t buf_size, int timeout_ms)
-{
-    int idx = 0;
     uint8_t c;
-    int waited = 0;
-
-    while (waited < timeout_ms && idx < (int)(buf_size - 1)) {
-        if (uart_poll_in(uart_dev, &c) == 0) {
-            buf[idx++] = c;
-            waited = 0; // reset timeout on byte received
-        } else {
-            k_msleep(10);
-            waited += 10;
-        }
-    }
-
-    buf[idx] = '\0';
-
-    if (idx == 0) {
-        debug_print("ESP antwoord: (geen data ontvangen!)");
-        return false;
-    } else {
-        debug_print("ESP antwoord:");
-        debug_print(buf);
-
-        // check if answer has "OK" 
-        if (strstr(buf, "OK") != NULL) {
-            return true;
-        }
-        return false;
-    }
-}
-
-/* --- Connect ESP8266 to WiFi --- */
-void esp_connect_wifi(void)
-{
-    if (wifi_connected) {
-        debug_print("ESP al verbonden met WiFi.");
+    
+    if (!uart_irq_update(dev)) {
         return;
     }
 
-    debug_print("Reset ESP en verbinden met WiFi...");
+    // Lees alle beschikbare bytes in één keer
+    while (uart_irq_rx_ready(dev)) {
+        if (uart_fifo_read(dev, &c, 1) == 1) {
+            // Sla op in buffer
+            if (rx_index < RX_BUFFER_SIZE - 1) {
+                rx_buffer[rx_index++] = c;
+                
+                // Print direct naar console (geen buffering)
+                printk("%c", c);
+                
+                // Als we een newline ontvangen, geef semafoor vrij
+                if (c == '\n') {
+                    k_sem_give(&rx_sem);
+                }
+            }
+        }
+    }
+}
 
-    send_at_command("AT+RST");
-    k_msleep(5000); // Wait for reset
-    send_at_command("AT");
-    k_msleep(500);
+/**
+ * @brief Initialize UART communication with the ESP8266 module.
+ *
+ * @return 1 on success, 0 if the UART device is not ready.
+ */
 
-    char join_cmd[128];
-    snprintf(join_cmd, sizeof(join_cmd),
-             "AT+CWJAP=\"WIFISPIJKERBOER\",\"Spijker2392017\"");
+int uart_comm_init(void)
+{
+    // Haal UART1 device op
+    uart_esp = DEVICE_DT_GET(DT_NODELABEL(usart1));
+    
+    if (!device_is_ready(uart_esp)) {
+        printk("Error: UART1 device not ready\n");
+        return 0;
+    }
+    // Configureer interrupt callback
+    uart_irq_callback_user_data_set(uart_esp, uart_isr, NULL);
+    uart_irq_rx_enable(uart_esp);
+    
+    return 1;
+}
 
-    bool connected = false;
-    int attempts = 0;
-    const int max_attempts = 3;
+/**
+ * @brief Send an AT command over UART to the ESP8266.
+ *
+ * @param cmd Null-terminated AT command string (without \r\n).
+ * @return 0 on success.
+ */
+int uart_send_at_command(const char *cmd)
+{
+
+    // Reset receive buffer
+    rx_index = 0;
+    memset(rx_buffer, 0, RX_BUFFER_SIZE);
+
+    // Stuur het commando
+    for (size_t i = 0; i < strlen(cmd); i++) {
+        uart_poll_out(uart_esp, cmd[i]);
+    }
+    
+    // Stuur CR+LF
+    uart_poll_out(uart_esp, '\r');
+    uart_poll_out(uart_esp, '\n');
+
+    return 0;
+}
+/**
+ * @brief Attempt to connect to a WiFi network.
+ *
+ * @param ssid WiFi SSID.
+ * @param password WiFi password.
+ * @return 1 on successful connection, 0 on failure or timeout.
+ */
+int wifi_connect(const char *ssid, const char *password)
+{
+    char cmd[128];
     char response[256];
+    int ret;
+    
+    // Maak connectie commando
+    snprintf(cmd, sizeof(cmd), "AT+CWJAP=\"%s\",\"%s\"", ssid, password); 
 
-    while (!connected && attempts < max_attempts) {
-        attempts++;
-        send_at_command(join_cmd);
-
-        // Read for up to 10 seconds for response
-        connected = uart_read_response_for_ok(response, sizeof(response), 10000);
-        if (!connected) {
-            debug_print("WiFi verbinding mislukt, opnieuw proberen...");
-            k_msleep(3000);
+    uart_send_at_command(cmd);
+    
+    // Wacht en check meerdere keren
+    for (int i = 0; i < 15; i++) {
+        k_sleep(K_MSEC(1000));
+        
+        // Check of we "OK" of "WIFI CONNECTED" hebben ontvangen
+        if (strstr(rx_buffer, "OK") != NULL || 
+            strstr(rx_buffer, "WIFI CONNECTED") != NULL) {
+            k_sleep(K_MSEC(2000));
+            return 1;
+        }
+        
+        // Check voor error
+        if (strstr(rx_buffer, "FAIL") != NULL || 
+            strstr(rx_buffer, "ERROR") != NULL) {
+            return 0;
+        }
+    }   
+    printk("\nConnection timeout\n");
+    return 0;
+}
+/**
+ * @brief Check if the ESP8266 is connected to a WiFi network.
+ *
+ * @return 1 if connected, 0 if not connected, -1 if unknown/error.
+ */
+int wifi_is_connected(void)
+{
+    // Check WiFi status via CWJAP
+    rx_index = 0;
+    memset(rx_buffer, 0, RX_BUFFER_SIZE);
+    
+    uart_send_at_command("AT+CWJAP?");
+    k_sleep(K_MSEC(500));
+     
+    if (strstr(rx_buffer, "No AP") != NULL) {
+        return 0;
+    }
+    if (strstr(rx_buffer, "+CWJAP:") != NULL) {
+        return 1;
+    }
+    
+    return -1; // Onbekend/Error
+}
+/**
+ * @brief Send sensor data to a server via HTTP GET.
+ *
+ * @param host Server IP or hostname.
+ * @param port Server port number.
+ * @param temp Temperature value.
+ * @param hum Humidity value.
+ * @param pres Pressure value.
+ * @return 0 on success, negative value on failure.
+ */
+int http_send_sensor_data(const char *host, 
+                          int port,
+                          float temp, 
+                          float hum, 
+                          float pres)
+{
+    char cmd[128];
+    char http_request[256];
+    int request_len;
+    
+    snprintf(cmd, sizeof(cmd), "AT+CIPSTART=\"TCP\",\"%s\",%d", host, port);
+    
+    rx_index = 0;
+    memset(rx_buffer, 0, RX_BUFFER_SIZE);
+    
+    uart_send_at_command(cmd);
+    
+    // Wacht max 3 seconden op connectie
+    for (int i = 0; i < 6; i++) {
+        k_sleep(K_MSEC(500));
+        
+        if (strstr(rx_buffer, "CONNECT") != NULL || 
+            strstr(rx_buffer, "ALREADY CONNECTED") != NULL) {
+            break;
+        }
+        
+        if (strstr(rx_buffer, "ERROR") != NULL) {
+            return -1;
+        }
+        
+        if (strstr(rx_buffer, "CLOSED") != NULL) {
+            return -1;
         }
     }
-
-    if (connected) {
-        wifi_connected = true;
-        debug_print("ESP succesvol verbonden met WiFi.");
-    } else {
-        debug_print("Kon geen WiFi verbinding maken.");
-    }
-}
-
-/* --- Check WiFi status --- */
-void check_wifi_status(void)
-{
-    debug_print("ESP8266 status check verzonden.");
-    send_at_command("AT+CWJAP?");
-    char buf[256];
-    uart_read_response_for_ok(buf, sizeof(buf), 3000);
-}
-
-
-/* --- Send sensor values to server --- */
-void uart_send_values(const struct sensor_value *temp,
-                      const struct sensor_value *hum,
-                      const struct sensor_value *pres)
-{
-    if (!wifi_connected) {
-        debug_print("WiFi niet verbonden. Eerst verbinden!");
-        esp_connect_wifi();
-        if (!wifi_connected) {
-            debug_print("Kan sensorwaarden niet verzenden zonder WiFi.");
-            return;
-        }
+    
+    k_sleep(K_MSEC(500)); 
+    
+    // Stap 2: Bouw HTTP GET request
+    snprintf(http_request, sizeof(http_request),
+             "GET /data?temp=%.2f&hum=%.2f&pres=%.2f HTTP/1.0\r\nHost: %s\r\n\r\n",
+             temp, hum, pres, host);
+    
+    request_len = strlen(http_request);
+    
+    // Stap 3: Stuur CIPSEND commando
+    snprintf(cmd, sizeof(cmd), "AT+CIPSEND=%d", request_len);
+    
+    rx_index = 0;
+    memset(rx_buffer, 0, RX_BUFFER_SIZE);
+    
+    uart_send_at_command(cmd);
+    k_sleep(K_MSEC(1000));
+    
+    // Wacht op '>' prompt
+    if (strchr(rx_buffer, '>') == NULL) {
+        printk("ESP8266 not ready to receive data\n");
+        uart_send_at_command("AT+CIPCLOSE");
+        k_sleep(K_MSEC(1000));
+        return -2;
     }
 
-    char http_payload[200];
-    int payload_len = snprintf(http_payload, sizeof(http_payload),
-        "GET /data?temp=%d.%06d&hum=%d.%06d&pres=%d.%06d HTTP/1.1\r\n"
-        "Host: 145.49.98.153:3000\r\n"
-        "Connection: close\r\n\r\n",
-        temp->val1, temp->val2,
-        hum->val1, hum->val2,
-        pres->val1, pres->val2);
+    // Stap 4: Stuur de HTTP request data 
+    uart_send_at_command(http_request);
 
-    if (payload_len <= 0 || payload_len >= (int)sizeof(http_payload)) {
-        debug_print("Payload snprintf failed");
-        return;
-    }
-
-    send_at_command("AT+CIPSTART=\"TCP\",\"145.49.98.153\",3000");
-    k_msleep(500);
-
-    char cipsend_cmd[64];
-    snprintf(cipsend_cmd, sizeof(cipsend_cmd), "AT+CIPSEND=%d", payload_len);
-    send_at_command(cipsend_cmd);
-
-    for (int i = 0; i < payload_len; i++) {
-        uart_poll_out(uart_dev, http_payload[i]);
-    }
-
-    k_msleep(500);
-    send_at_command("AT+CIPCLOSE");
+    // Stap 5: Wacht op server respons
+    k_sleep(K_MSEC(2000));
+      
+    // Stap 6: Sluit connectie
+    uart_send_at_command("AT+CIPCLOSE");
+    k_sleep(K_MSEC(500));
+    
+    return 0;
 }
